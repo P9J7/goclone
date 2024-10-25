@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -12,8 +13,10 @@ import (
 )
 
 // TODO: figure out what was done here at 4am
-func arrange(projectDir string) error {
-	indexfile := projectDir + "/index.html"
+func arrange(projectDir string, pagePath string) error {
+	VisitedPageSet[domain+pagePath] = struct{}{}
+
+	indexfile := projectDir + "/" + pagePath + ".html"
 	input, err := ioutil.ReadFile(indexfile)
 	if err != nil {
 		return err
@@ -33,7 +36,7 @@ func arrange(projectDir string) error {
 			if exists {
 				file := filepath.Base(data)
 
-				s.SetAttr("src", "js/"+file)
+				s.SetAttr("src", projectDir+"/js/"+file)
 				if data, _ := s.Attr("src"); data != "" {
 					lines[index] = fmt.Sprintf(`<script src="%s"></script>`, data)
 				}
@@ -47,10 +50,25 @@ func arrange(projectDir string) error {
 			if exists {
 				file := filepath.Base(data)
 
-				s.SetAttr("href", "css/"+file)
+				s.SetAttr("href", projectDir+"/css/"+file)
 				if data, _ := s.Attr("href"); data != "" {
 					lines[index] = fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s">`, data)
 				}
+			}
+		})
+
+		// 替换上一页下一页链接
+		doc.Find(".menu-item").Each(func(i int, s *goquery.Selection) {
+			data, exists := s.Attr("href")
+			if exists {
+				original := lines[index]
+				data, _ = url.QueryUnescape(data)
+				toCrawlPage := domain + data
+				if _, ok := VisitedPageSet[toCrawlPage]; !ok {
+					ToVisitPageSet[toCrawlPage] = struct{}{}
+				}
+				newLink := projectDir + data + ".html"
+				lines[index] = reLink.ReplaceAllString(original, `href=`+`"`+newLink+`"`)
 			}
 		})
 
@@ -61,7 +79,7 @@ func arrange(projectDir string) error {
 			if exists {
 				original := lines[index]
 				file := filepath.Base(data)
-				s.SetAttr("src", "imgs/"+file)
+				s.SetAttr("src", projectDir+"/imgs/"+file)
 
 				if data, _ := s.Attr("src"); data != "" {
 					lines[index] = reSrc.ReplaceAllString(original, `src=`+data)
@@ -69,8 +87,20 @@ func arrange(projectDir string) error {
 			}
 		})
 	}
+
+	delete(ToVisitPageSet, pagePath)
+
 	output := strings.Join(lines, "\n")
 	return ioutil.WriteFile(indexfile, []byte(output), 0777)
 }
 
-var reSrc = regexp.MustCompile(`src\s*=\s*"(.+?)"`)
+var (
+	reSrc = regexp.MustCompile(`src\s*=\s*"(.+?)"`)
+
+	reLink = regexp.MustCompile(`href=".*.md"`)
+
+	domain = `https://learn.lianglianglee.com`
+
+	ToVisitPageSet = map[string]struct{}{}
+	VisitedPageSet = map[string]struct{}{}
+)

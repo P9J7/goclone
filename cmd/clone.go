@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os/exec"
 	"runtime"
 	"strings"
-
-	"os/exec"
+	"time"
 
 	"github.com/imthaghost/goclone/pkg/crawler"
 	"github.com/imthaghost/goclone/pkg/file"
@@ -65,14 +65,27 @@ func cloneSite(ctx context.Context, args []string) error {
 			firstProject = projectPath
 		}
 
-		if err := crawler.Crawl(ctx, u, projectPath, jar, ProxyString, UserAgent); err != nil {
+		var pagePath string
+		if pagePath, err = crawler.Crawl(ctx, u, projectPath, jar, ProxyString, UserAgent); err != nil {
 			return fmt.Errorf("%q: %w", u, err)
 		}
 		// Restructure html
-		if err := html.LinkRestructure(projectPath); err != nil {
+		if err := html.LinkRestructure(projectPath, pagePath); err != nil {
 			return fmt.Errorf("%q: %w", projectPath, err)
 		}
 
+		if len(html.ToVisitPageSet) > 0 {
+			for nextLink, _ := range html.ToVisitPageSet {
+				time.Sleep(15 * time.Second)
+				var newPagePath string
+				if newPagePath, err = crawler.Collector(ctx, nextLink, projectPath, jar, ProxyString, UserAgent); err != nil {
+					return fmt.Errorf("%q: %w", nextLink, err)
+				}
+				if err := html.LinkRestructure(projectPath, newPagePath); err != nil {
+					return fmt.Errorf("%q: %w", newPagePath, err)
+				}
+			}
+		}
 	}
 	if Serve {
 		serverUrl := fmt.Sprintf("http://localhost:%d", ServePort)

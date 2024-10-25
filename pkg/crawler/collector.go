@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"strings"
 
 	"github.com/gocolly/colly/v2"
@@ -12,30 +13,34 @@ import (
 
 // Collector searches for css, js, and images within a given link
 // TODO improve for better performance
-func Collector(ctx context.Context, url string, projectPath string, cookieJar *cookiejar.Jar, proxyString string, userAgent string) error {
+func Collector(ctx context.Context, urlLink string, projectPath string, cookieJar *cookiejar.Jar, proxyString string, userAgent string) (pagePath string, err error) {
 	// create a new collector
 	c := colly.NewCollector(colly.Async(true))
 	setUpCollector(c, ctx, cookieJar, proxyString, userAgent)
 
+	paths := strings.Split(urlLink, `com`)[1:]
+	pagePath, _ = url.QueryUnescape(paths[len(paths)-1])
+	fmt.Println("Page Path", "-->", pagePath)
+
 	// search for all link tags that have a rel attribute that is equal to stylesheet - CSS
-	c.OnHTML("link[rel='stylesheet']", func(e *colly.HTMLElement) {
-		// hyperlink reference
-		link := e.Attr("href")
-		// print css file was found
-		fmt.Println("Css found", "-->", link)
-		// extraction
-		Extractor(e.Request.AbsoluteURL(link), projectPath)
-	})
+	//c.OnHTML("link[rel='stylesheet']", func(e *colly.HTMLElement) {
+	//	// hyperlink reference
+	//	link := e.Attr("href")
+	//	// print css file was found
+	//	fmt.Println("Css found", "-->", link)
+	//	// extraction
+	//	Extractor(e.Request.AbsoluteURL(link), projectPath)
+	//})
 
 	// search for all script tags with src attribute -- JS
-	c.OnHTML("script[src]", func(e *colly.HTMLElement) {
-		// src attribute
-		link := e.Attr("src")
-		// Print link
-		fmt.Println("Js found", "-->", link)
-		// extraction
-		Extractor(e.Request.AbsoluteURL(link), projectPath)
-	})
+	//c.OnHTML("script[src]", func(e *colly.HTMLElement) {
+	//	// src attribute
+	//	link := e.Attr("src")
+	//	// Print link
+	//	fmt.Println("Js found", "-->", link)
+	//	// extraction
+	//	Extractor(e.Request.AbsoluteURL(link), projectPath)
+	//})
 
 	// serach for all img tags with src attribute -- Images
 	c.OnHTML("img[src]", func(e *colly.HTMLElement) {
@@ -53,17 +58,17 @@ func Collector(ctx context.Context, url string, projectPath string, cookieJar *c
 	//Before making a request
 	c.OnRequest(func(r *colly.Request) {
 		link := r.URL.String()
-		if url == link {
-			HTMLExtractor(link, projectPath)
-		}
+		//if urlLink == link {
+		HTMLExtractor(link, projectPath, pagePath)
+		//}
 	})
 
-	// Visit each url and wait for stuff to load :)
-	if err := c.Visit(url); err != nil {
-		return err
+	// Visit each urlLink and wait for stuff to load :)
+	if err = c.Visit(urlLink); err != nil {
+		return
 	}
 	c.Wait()
-	return nil
+	return
 }
 
 type cancelableTransport struct {
